@@ -1,0 +1,22 @@
+{
+  "name": "sly-to-sticker",
+  "version": "1.0.0",
+  "description": "WhatsApp bot untuk convert & kirim sticker pack dari Sticker.ly via Baileys",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "baileys": "npm:@rexxhayanasi/elaina-baileys@^1.4.6",
+    "jszip": "^3.10.2",
+    "node-webpmux": "^3.2.1",
+    "pino": "^10.4.0",
+    "sharp": "^0.35.0"
+  }
+}

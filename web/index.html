@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>sly-to-sticker — Dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">⚡</span> sly-to-sticker <span class="muted">Dashboard &amp; Control</span></div>
+    <div id="user-bar" class="hidden">
+      <span id="conn-pill" class="pill pill-off">…</span>
+      <button id="btn-logout" class="btn ghost small">Keluar</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ===== LOGIN ===== -->
+    <section id="view-login" class="view">
+      <div class="card login-card">
+        <h1>Masuk</h1>
+        <p class="muted">Panel kontrol bot. Masukkan password.</p>
+        <form id="form-login" autocomplete="off">
+          <div class="row">
+            <input id="inp-password" type="password" placeholder="Password" autocomplete="current-password" required>
+            <button id="btn-eye" type="button" class="btn ghost small" title="Tampilkan password">👁</button>
+          </div>
+          <button class="btn primary block" type="submit">Masuk</button>
+        </form>
+        <p id="login-error" class="error"></p>
+      </div>
+    </section>
+
+    <!-- ===== PAIRING ===== -->
+    <section id="view-pair" class="view hidden">
+      <div class="card">
+        <h1>Pairing WhatsApp</h1>
+        <p class="muted">Masukkan nomor yang mau di-connect-kan (format internasional, tanpa <b>+</b>).</p>
+        <form id="form-pair">
+          <div class="row">
+            <input id="inp-number" type="tel" inputmode="numeric" placeholder="6281234567890" required>
+            <button class="btn primary" type="submit">Buat Kode Pairing</button>
+          </div>
+        </form>
+
+        <div id="pair-code-box" class="hidden">
+          <div class="muted small">Kode pairing:</div>
+          <div id="pair-code" class="pair-code">—</div>
+          <div class="row">
+            <button id="btn-copy-code" class="btn ghost small">Salin Kode</button>
+            <button id="btn-refresh-code" class="btn ghost small">Buat Ulang Kode</button>
+          </div>
+          <ol class="steps">
+            <li>Buka WhatsApp di HP (nomor yang tadi dimasukkan).</li>
+            <li>Menu <b>⋮</b> → <b>Perangkat tertaut</b> → <b>Tautkan perangkat</b>.</li>
+            <li>Pilih <b>Tautkan dengan nomor telepon</b>, masukkan kode di atas.</li>
+          </ol>
+          <p class="muted small">Kode berlaku singkat. Jika kadaluarsa, klik "Buat Ulang Kode".</p>
+        </div>
+        <p id="pair-status" class="status-line"></p>
+      </div>
+    </section>
+
+    <!-- ===== DASHBOARD ===== -->
+    <section id="view-dash" class="view hidden">
+      <div class="grid">
+        <div class="card">
+          <h2>Status Koneksi</h2>
+          <div class="status-grid">
+            <div><span class="muted small">Status</span><div id="st-state" class="val">—</div></div>
+            <div><span class="muted small">Akun</span><div id="st-jid" class="val mono">—</div></div>
+            <div><span class="muted small">Nomor</span><div id="st-number" class="val mono">—</div></div>
+            <div><span class="muted small">Uptime</span><div id="st-uptime" class="val">—</div></div>
+          </div>
+          <p id="st-message" class="status-line"></p>
+          <p id="st-error" class="error"></p>
+          <div class="actions">
+            <button id="btn-reconnect" class="btn primary">Sambung Ulang</button>
+            <button id="btn-wipe" class="btn warn">Hapus Session</button>
+            <button id="btn-logout-wa" class="btn danger">Logout &amp; Hapus Session</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Auto-Delete</h2>
+          <p class="muted small">Otomatis hapus pesan button / rich / interactive / payment.</p>
+          <div class="form-grid">
+            <label class="switch-row"><span>Aktif</span>
+              <input type="checkbox" id="ad-enabled"><span class="switch"></span>
+            </label>
+            <label class="switch-row"><span>Hapus pesan bot sendiri</span>
+              <input type="checkbox" id="ad-own"><span class="switch"></span>
+            </label>
+            <label class="switch-row"><span>Proses history</span>
+              <input type="checkbox" id="ad-history"><span class="switch"></span>
+            </label>
+            <label class="field"><span class="muted small">Mode hapus</span>
+              <select id="ad-mode">
+                <option value="forMe">Untuk saya (forMe)</option>
+                <option value="forEveryone">Untuk semua orang (revoke)</option>
+              </select>
+            </label>
+            <label class="field"><span class="muted small">Cakupan</span>
+              <select id="ad-scope">
+                <option value="private">Chat pribadi saja</option>
+                <option value="all">Semua chat (termasuk grup)</option>
+              </select>
+            </label>
+          </div>
+          <div class="actions">
+            <button id="btn-save-ad" class="btn primary">Simpan Pengaturan</button>
+          </div>
+          <p id="ad-status" class="status-line"></p>
+        </div>
+
+        <div class="card wide">
+          <h2>Log Aktivitas</h2>
+          <div id="log" class="log"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="muted small">sly-to-sticker · koneksi WhatsApp &amp; session dikelola engine · password dilindungi scrypt + rate-limit + lockout</footer>
+  <script src="/app.js"></script>
+</body>
+</html>
