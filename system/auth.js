@@ -154,10 +154,11 @@ export function bumpApiRate(ip) {
    apiLimiter.count(ip, { windowSec: CONFIG.api.windowSec });
 }
 
-// ---------------- Token sesi (HMAC, stateless + revocation lokal) ----------------
+// ---------------- Token sesi (HMAC-SHA256 stateless + revocation lokal) ----------------
 // Format: v1.<exp>.<random>.<hmac>
-const revoked = new Set(); // revocation lokal (berlaku pada proses standalone)
-const issued = new Set(); // allowlist lokal — kalau ada, token harus terdaftar
+// CATATAN PENTING: JANGAN gunakan allowlist `issued` in-memory karena di serverless
+// (Vercel) request berikutnya bisa ditangani instance berbeda -> menyebabkan loop 401!
+const revoked = new Set();
 
 function sign(payload) {
    return crypto.createHmac('sha256', CONFIG.authSecret).update(payload).digest('base64url');
@@ -168,14 +169,12 @@ export function issueSession() {
    const rand = crypto.randomBytes(18).toString('base64url');
    const payload = `v1.${exp}.${rand}`;
    const sid = `${payload}.${sign(payload)}`;
-   issued.add(sid);
    return { sid, exp };
 }
 
 export function verifySession(sid) {
    if (typeof sid !== 'string' || sid.length < 20 || sid.length > 400) return { ok: false };
    if (revoked.has(sid)) return { ok: false };
-   if (issued.size > 0 && !issued.has(sid)) return { ok: false };
    const parts = sid.split('.');
    if (parts.length !== 4 || parts[0] !== 'v1') return { ok: false };
    const [v, expStr, rand, sig] = parts;
@@ -192,11 +191,10 @@ export function verifySession(sid) {
 export function revokeSession(sid) {
    if (typeof sid === 'string') {
       revoked.add(sid);
-      issued.delete(sid);
    }
 }
 
-// ---------------- Cookie & bearer ----------------
+// ---------------- Cookie, Session Header & Bearer ----------------
 export function parseCookies(req) {
    const out = {};
    const raw = req?.headers?.cookie || '';
@@ -207,13 +205,21 @@ export function parseCookies(req) {
    return out;
 }
 
+export function extractSessionToken(req) {
+   const hdr = req?.headers?.['x-session-token'];
+   if (typeof hdr === 'string' && hdr.trim()) return hdr.trim();
+   return parseCookies(req)[COOKIE_NAME] || '';
+}
+
 export function buildSessionCookie(sid, exp, https) {
    const maxAge = Math.max(1, exp - Math.floor(Date.now() / 1000));
-   return `${COOKIE_NAME}=${sid}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${https ? '; Secure' : ''}`;
+   const secAttr = https ? '; SameSite=None; Secure; Partitioned' : '; SameSite=Lax';
+   return `${COOKIE_NAME}=${sid}; Path=/; HttpOnly; Max-Age=${maxAge}${secAttr}`;
 }
 
 export function buildClearCookie(https) {
-   return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${https ? '; Secure' : ''}`;
+   const secAttr = https ? '; SameSite=None; Secure; Partitioned' : '; SameSite=Lax';
+   return `${COOKIE_NAME}=; Path=/; HttpOnly; Max-Age=0${secAttr}`;
 }
 
 /** Bearer ENGINE_TOKEN — untuk akses mesin dari Vercel/CLI */
@@ -228,12 +234,13 @@ export function verifyBearer(req) {
 export function sameOriginOk(req, viaBearer) {
    if (viaBearer) return true; // Bearer tidak bisa dikirim lewat form browser
    const origin = req?.headers?.origin;
-   if (origin) {
+   if (origin && origin !== 'null') {
       try {
          const o = new URL(origin);
-         const host = req?.headers['x-forwarded-host'] || req?.headers?.host || '';
-         const proto = (req?.headers['x-forwarded-proto'] || 'http').split(',')[0].trim();
-         if (`${o.protocol}//${o.host}` !== `${proto}://${host}` && o.host !== host) return false;
+         const host = String(req?.headers['x-forwarded-host'] || req?.headers?.host || '')
+            .split(',')[0]
+            .trim();
+         if (host && o.host !== host) return false;
       } catch {
          return false;
       }
@@ -243,10 +250,10 @@ export function sameOriginOk(req, viaBearer) {
    return true;
 }
 
-/** Status autentikasi request: cookie sesi ATAU bearer token mesin */
+/** Status autentikasi request: bearer mesin ATAU token sesi (header / cookie) */
 export function authStatus(req) {
    if (verifyBearer(req)) return { ok: true, via: 'bearer' };
-   const sid = parseCookies(req)[COOKIE_NAME];
+   const sid = extractSessionToken(req);
    const v = verifySession(sid);
    if (v.ok) return { ok: true, via: 'cookie', sid, exp: v.exp };
    return { ok: false };

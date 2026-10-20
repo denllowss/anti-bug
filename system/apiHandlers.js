@@ -2,12 +2,12 @@
  * system/apiHandlers.js — Router API bersama (standalone & Vercel)
  *
  * Semua endpoint (kecuali /api/health & /api/login) butuh autentikasi:
- * cookie sesi web ATAU Bearer ENGINE_TOKEN (untuk komunikasi mesin).
+ * token sesi web (header X-Session-Token / cookie) ATAU Bearer ENGINE_TOKEN.
  */
 import {
    verifyPassword, checkLoginAllowed, recordLoginFailure, recordLoginSuccess,
-   checkApiRate, bumpApiRate, issueSession, revokeSession, parseCookies,
-   buildSessionCookie, buildClearCookie, authStatus, sameOriginOk, COOKIE_NAME,
+   checkApiRate, bumpApiRate, issueSession, revokeSession, extractSessionToken,
+   buildSessionCookie, buildClearCookie, authStatus, sameOriginOk,
 } from './auth.js';
 import { sendJson } from './http.js';
 import { CONFIG } from './config.js';
@@ -40,7 +40,8 @@ export function createApiRouter({ engine, statefulAuth = true }) {
       }
 
       if (pathname === '/api/login' && method === 'POST') {
-         if (!sameOriginOk(req, false)) return sendJson(res, 403, { ok: false, error: 'Ditolak (origin)' });         const allowed = checkLoginAllowed(ip);
+         if (!sameOriginOk(req, false)) return sendJson(res, 403, { ok: false, error: 'Ditolak (origin)' });
+         const allowed = checkLoginAllowed(ip);
          if (!allowed.ok) {
             return sendJson(res, 429, { ok: false, error: 'Terlalu banyak percobaan login. Coba lagi nanti.', retryAfter: allowed.retryAfter }, {
                'Retry-After': String(allowed.retryAfter),
@@ -56,13 +57,13 @@ export function createApiRouter({ engine, statefulAuth = true }) {
          }
          recordLoginSuccess(ip);
          const { sid, exp } = issueSession();
-         return sendJson(res, 200, { ok: true, exp }, {
+         return sendJson(res, 200, { ok: true, token: sid, exp }, {
             'Set-Cookie': buildSessionCookie(sid, exp, req.https),
          });
       }
 
       if (pathname === '/api/logout' && method === 'POST') {
-         const sid = parseCookies(req)[COOKIE_NAME];
+         const sid = extractSessionToken(req);
          if (sid) revokeSession(sid);
          return sendJson(res, 200, { ok: true }, {
             'Set-Cookie': buildClearCookie(req.https),
@@ -72,6 +73,10 @@ export function createApiRouter({ engine, statefulAuth = true }) {
       // ---------- butuh autentikasi ----------
       const auth = authStatus(req);
       if (!auth.ok) return sendJson(res, 401, { ok: false, error: 'Belum login' });
+
+      if (pathname === '/api/auth' && method === 'GET') {
+         return sendJson(res, 200, { ok: true, exp: auth.exp ?? null });
+      }
 
       if (auth.via === 'cookie' && method === 'POST' && !sameOriginOk(req, false)) {
          return sendJson(res, 403, { ok: false, error: 'Ditolak (origin)' });
@@ -100,7 +105,7 @@ export function createApiRouter({ engine, statefulAuth = true }) {
       }
 
       if (pathname === '/api/config' && method === 'POST') {
-         return sendJson(res, 200, engine.setConfig(body ?? {}));
+         return sendJson(res, 200, await engine.setConfig(body ?? {}));
       }
 
       return sendJson(res, 404, { ok: false, error: 'Endpoint tidak dikenal' });

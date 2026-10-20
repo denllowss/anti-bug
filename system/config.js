@@ -26,6 +26,22 @@ function ensureDataDir() {
 function loadOrCreateSecret(file, envName) {
    const fromEnv = process.env[envName];
    if (fromEnv && fromEnv.length >= 16) return fromEnv;
+
+   // Di Vercel serverless tanpa env AUTH_SECRET/ENGINE_TOKEN manual:
+   // turunkan kunci 256-bit deterministik dari identitas internal project Vercel
+   // agar SEMUA instance & cold-start punya kunci HMAC yang SAMA (tidak mental ke login lagi).
+   if (IS_VERCEL) {
+      const seed = [
+         'anti-bug-vercel-secret-v1',
+         file,
+         process.env.VERCEL_PROJECT_ID || '',
+         process.env.VERCEL_ORG_ID || '',
+         process.env.VERCEL_GIT_REPO_ID || '',
+         process.env.WEB_PASSWORD || DEFAULT_PASSWORD_HASH.hash,
+      ].join('|');
+      return crypto.scryptSync(seed, `salt:${file}:anti-bug-v1`, 32).toString('hex');
+   }
+
    ensureDataDir();
    const p = path.join(PATHS.data, file);
    try {

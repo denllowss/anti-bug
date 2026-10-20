@@ -2,17 +2,31 @@
 (() => {
    const $ = id => document.getElementById(id);
    const views = { login: $('view-login'), pair: $('view-pair'), dash: $('view-dash') };
+   const TOKEN_KEY = 'ab_sid';
 
    let authed = false;
    let lastState = null;
    let pollTimer = null;
 
+   function getSavedToken() {
+      try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; }
+   }
+   function saveToken(tok) {
+      try {
+         if (tok) localStorage.setItem(TOKEN_KEY, tok);
+         else localStorage.removeItem(TOKEN_KEY);
+      } catch {}
+   }
+
    // ---------- util ----------
    async function api(path, method = 'GET', body = null) {
+      const tok = getSavedToken();
       const res = await fetch(path, {
          method,
+         credentials: 'same-origin',
          headers: {
             'X-Requested-With': 'XMLHttpRequest',
+            ...(tok ? { 'X-Session-Token': tok } : {}),
             ...(body ? { 'Content-Type': 'application/json' } : {}),
          },
          body: body ? JSON.stringify(body) : undefined,
@@ -57,10 +71,13 @@
       const { status, data } = await api('/api/login', 'POST', { password: $('inp-password').value });
       btn.disabled = false;
       if (status === 200 && data?.ok) {
+         if (data.token) saveToken(data.token);
          authed = true;
          $('inp-password').value = '';
+         // Langsung masuk ke halaman dalam aplikasi (tidak pernah nyangkut di layar password)
+         show('pair');
          log('Login berhasil', 'ok');
-         startPolling();
+         await startPolling();
       } else {
          $('login-error').textContent = data?.error || `Gagal login (${status})`;
       }
@@ -73,6 +90,7 @@
 
    $('btn-logout').addEventListener('click', async () => {
       await api('/api/logout', 'POST', {});
+      saveToken('');
       authed = false;
       stopPolling();
       show('login');
@@ -83,7 +101,7 @@
    $('form-pair').addEventListener('submit', async e => {
       e.preventDefault();
       const number = $('inp-number').value.trim();
-      localStorage.setItem('lastNumber', number);
+      try { localStorage.setItem('lastNumber', number); } catch {}
       $('pair-status').textContent = 'Meminta kode pairing…';
       $('pair-code-box').classList.add('hidden');
       const { status, data } = await api('/api/pair', 'POST', { number });
@@ -94,8 +112,6 @@
       } else if (data?.ok) {
          $('pair-status').textContent = 'Menyiapkan koneksi… kode akan muncul sebentar lagi.';
       } else {
-         $('pair-status').textContent = '';
-         $('login-error').textContent = '';
          log(`Pairing gagal: ${data?.error || status}`, 'err');
          $('pair-status').textContent = data?.error || 'Gagal membuat kode pairing.';
       }
@@ -188,15 +204,20 @@
 
    async function refreshStatus() {
       const { status, data } = await api('/api/status');
-      if (status === 401 || (status !== 200 && data?.error === 'Belum login')) {
+      if (status === 401) {
+         saveToken('');
          authed = false;
          stopPolling();
          show('login');
          return;
       }
       if (!data?.ok) {
+         // Tetap di dalam dashboard (JANGAN kembalikan ke halaman password!)
+         show('dash');
          $('conn-pill').textContent = 'OFFLINE';
          $('conn-pill').className = 'pill pill-off';
+         $('st-state').textContent = 'Engine belum terhubung';
+         $('st-error').textContent = data?.error || 'Tidak dapat terhubung ke engine.';
          if (status === 502 || data?.error) log(`Status: ${data?.error || 'engine tidak terhubung'}`, 'err');
          return;
       }
@@ -239,9 +260,9 @@
       }
    }
 
-   function startPolling() {
+   async function startPolling() {
       stopPolling();
-      refreshStatus();
+      await refreshStatus();
       pollTimer = setInterval(refreshStatus, 2500);
    }
    function stopPolling() {
@@ -250,15 +271,19 @@
    }
 
    // ---------- init ----------
-   const saved = localStorage.getItem('lastNumber');
-   if (saved) $('inp-number').value = saved;
+   try {
+      const saved = localStorage.getItem('lastNumber');
+      if (saved) $('inp-number').value = saved;
+   } catch {}
 
    (async () => {
-      const { status } = await api('/api/status');
+      const { status } = await api('/api/auth');
       if (status === 200) {
          authed = true;
-         startPolling();
+         show('pair');
+         await startPolling();
       } else {
+         saveToken('');
          show('login');
       }
    })();

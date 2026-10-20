@@ -1,25 +1,37 @@
 /**
- * api/[...path].js — Handler serverless Vercel (satu catch-all untuk /api/*)
+ * api/[...path].js — Handler serverless Vercel (catch-all /api/*)
  *
- * Di Vercel, koneksi WhatsApp TIDAK bisa berjalan (butuh proses permanen).
- * Handler ini menjadi "control plane": login + dashboard memanggil ENGINE
- * (node index.js di host persistent) lewat ENGINE_URL + ENGINE_TOKEN.
- *
- * Env yang dibutuhkan di Vercel:
- *   AUTH_SECRET   — rahasia token sesi (WAJIB, minimal 16 karakter)
- *   ENGINE_URL    — alamat engine, contoh https://bot.example.com
- *   ENGINE_TOKEN  — token mesin (sama dengan yang tercetak/dibuat engine)
+ * Mendukung 2 mode otomatis:
+ *   1. Jika env ENGINE_URL diset -> proxy ke engine persistent (VPS/Railway/Render)
+ *   2. Jika env ENGINE_URL kosong -> jalankan WAEngine langsung di container warm
+ *      Vercel (/tmp/anti-bug/session) sehingga login, pairing code & kontrol
+ *      langsung berfungsi tanpa wajib setup server tambahan terlebih dahulu.
  */
 import { CONFIG } from '../system/config.js';
 import { createApiRouter } from '../system/apiHandlers.js';
 import { createRemoteEngine } from '../system/engineClient.js';
+import { WAEngine } from '../system/wa.js';
 import { normalizeReq, readJsonBody, sendJson, applySecurityHeaders, isHttps } from '../system/http.js';
 
-const engine = createRemoteEngine({
-   baseUrl: process.env.ENGINE_URL || '',
-   token: process.env.ENGINE_TOKEN || CONFIG.engineToken,
+function getEngine() {
+   if (process.env.ENGINE_URL) {
+      return createRemoteEngine({
+         baseUrl: process.env.ENGINE_URL,
+         token: process.env.ENGINE_TOKEN || CONFIG.engineToken,
+      });
+   }
+   if (!globalThis.__antiBugWaEngine) {
+      const e = new WAEngine();
+      e.resumeIfPossible().catch(() => {});
+      globalThis.__antiBugWaEngine = e;
+   }
+   return globalThis.__antiBugWaEngine;
+}
+
+const route = createApiRouter({
+   engine: getEngine(),
+   statefulAuth: false,
 });
-const route = createApiRouter({ engine, statefulAuth: false });
 
 export default async function handler(req, res) {
    applySecurityHeaders(res, { https: isHttps(req) || true });
